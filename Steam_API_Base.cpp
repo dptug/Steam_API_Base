@@ -24,6 +24,9 @@
 #include "Functions\CreateInterface.h"
 #include "Functions\Flat.h"
 
+#include "ConfigManager.h"
+#include "SteamSettings.h"
+
 void MyInvalidParameterHandler(const wchar_t* expression, const wchar_t* function, const wchar_t* file, unsigned int line, uintptr_t pReserved)
 {
 	MessageBoxW(nullptr, L"steam_api(64).dll Crashed (Invalid Parameter Handler)!", L"Invalid Parameter Handler", MB_ICONERROR);
@@ -146,6 +149,12 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpvReserved)
 
 		AllocConsole();
 
+		FILE* fp_stdout = nullptr;
+		FILE* fp_stderr = nullptr;
+
+		freopen_s(&fp_stdout, "stdout.txt", "w", stdout);
+		freopen_s(&fp_stderr, "stderr.txt", "w", stderr);
+
 		char szFullDllPath[MAX_PATH] = { 0 };
 
 		const DWORD ModuleFileName = GetModuleFileNameA(hModule, szFullDllPath, sizeof(szFullDllPath));
@@ -164,7 +173,7 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpvReserved)
 
 		_cprintf_s("[Steam_API_Base] Dll Path --> %s\r\n", szFullDllPath);
 
-        #if defined(_M_IX86)
+        /*#if defined(_M_IX86)
 		    if (StrStrIA(szFullDllPath, "steam_api.dll") == nullptr)
 		    {
 				MessageBoxW(nullptr, L"Dll name must be steam_api.dll!", L"Steam API Base", MB_ICONERROR);
@@ -177,7 +186,7 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpvReserved)
 				MessageBoxW(nullptr, L"Dll name must be steam_api64.dll!", L"Steam API Base", MB_ICONERROR);
 				ExitProcess(0);
 			}
-        #endif
+        #endif*/
 
 		_cprintf_s("[Steam_API_Base] PID --> %lu\r\n", GetCurrentProcessId());
 		_cprintf_s("[Steam_API_Base] ThreadID --> %lu\r\n", GetCurrentThreadId());
@@ -187,6 +196,24 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpvReserved)
 
 		InitializeSRWLock(&ContextLock);
 		InitializeSRWLock(&CallbackLock);
+
+		// Загружаем конфигурацию
+		if (!GConfigManager()->LoadConfig())
+		{
+			WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7,
+				"[Steam_API_Base] Failed to load configuration!\r\n");
+		}
+
+		if (!GSteamSettings()->LoadSettings())
+		{
+			WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7,
+				"[Steam_API_Base] Failed to load Steam settings!\r\n");
+		}
+		else
+		{
+			// Выводим основную информацию о настройках
+			GSteamSettings()->PrintSettings();
+		}
 
 		Win32MiniDump = new CWin32MiniDump();
 	}
