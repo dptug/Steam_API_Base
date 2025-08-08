@@ -28,24 +28,39 @@ CCallbackMgr::CCallbackMgr()
 
 CCallbackMgr::~CCallbackMgr()
 {
-	WriteColoredText(FOREGROUND_BLUE | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] CCallbackMgr::Destructor\r\n");
-	bCallbackManagerInitialized = false;
-	this->oSteam_BGetCallback = nullptr;
-	this->oSteam_FreeLastCallback = nullptr;
-	this->oSteam_GetAPICallResult = nullptr;
-	this->HSteamUserCurrent = 0;
-	this->ManualDispatchCallback = 0;
-	this->ManualDispatchCallbackSize = 0;
-	this->bIsRunningCallbacks = false;
+	printf("[Steam_API_Base] CCallbackMgr::Destructor\r\n");
 
-	// === ТАКАЯ ЖЕ ОЧИСТКА КАК В Unload ===
-	for (auto& pair : this->MapAPIBuffer)
+	// Безопасная очистка карты колбэков
+	auto it = m_Callbacks.begin();
+	while (it != m_Callbacks.end())
 	{
-		delete[] pair.second;
+		printf("[Steam_API_Base] Cleaning up callback %d\r\n", it->second.callbackId);
+		it = m_Callbacks.erase(it);
 	}
-	this->MapAPIBuffer.clear();
-	this->MapCallbacks.clear();
-	this->MapAPICalls.clear();
+
+	printf("[Steam_API_Base] All callbacks cleaned up\r\n");
+}
+
+bool CCallbackMgr::HasCallback(class CCallbackBase* pCallback)
+{
+	if (!pCallback)
+		return false;
+
+	return m_Callbacks.find(pCallback) != m_Callbacks.end();
+}
+
+void CCallbackMgr::Clear()
+{
+	printf("[Steam_API_Base] CCallbackMgr::Clear\r\n");
+
+	auto it = m_Callbacks.begin();
+	while (it != m_Callbacks.end())
+	{
+		it = m_Callbacks.erase(it);
+	}
+
+	m_Callbacks.clear();
+	printf("[Steam_API_Base] All callbacks cleared\r\n");
 }
 
 void CCallbackMgr::Unload()
@@ -285,95 +300,59 @@ void CCallbackMgr::RunCallbacksTryCatch(HSteamPipe hSteamPipe, bool bGameServerC
 	return;
 }
 
-void CCallbackMgr::RegisterCallback(CCallbackBase *pCallback, int iCallback)
+void CCallbackMgr::UnregisterCallback(class CCallbackBase* pCallback)
 {
-	if (pCallback != nullptr)
-	{
-		if (pCallback->GetCallbackSizeBytes() != 0)
-		{
-			_cprintf_s("[Steam_API_Base] CCallbackMgr::RegisterCallback --> %d --> Size --> %d --> Original flag(s) --> %d\r\n", iCallback, pCallback->GetCallbackSizeBytes(), pCallback->m_nCallbackFlags);
+	printf("[Steam_API_Base] CCallbackMgr::UnregisterCallback\r\n");
 
-			pCallback->m_nCallbackFlags |= pCallback->k_ECallbackFlagsRegistered;
-			pCallback->m_iCallback = iCallback;
-			this->MapCallbacks.insert(std::make_pair(iCallback, pCallback));
+	if (!pCallback)
+	{
+		printf("[Steam_API_Base] Null callback pointer\r\n");
+		return;
+	}
+
+	// Безопасная работа с итераторами
+	for (auto it = m_Callbacks.begin(); it != m_Callbacks.end(); ++it)
+	{
+		if (it->second.pCallback == pCallback)
+		{
+			printf("[Steam_API_Base] Found callback to unregister\r\n");
+			m_Callbacks.erase(it);
+			printf("[Steam_API_Base] Callback unregistered successfully\r\n");
+			return;
 		}
 	}
-	else
-	{
-		WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] CCallbackMgr::RegisterCallback --> pCallback is nullptr!\r\n");
-	}
 
-	return;
+	printf("[Steam_API_Base] Callback not found for unregister\r\n");
 }
 
-void CCallbackMgr::UnregisterCallback(CCallbackBase* pCallback)
+void CCallbackMgr::RegisterCallback(class CCallbackBase* pCallback, int iCallback)
 {
-	if (pCallback != nullptr)
-	{
-		if (pCallback->m_nCallbackFlags & pCallback->k_ECallbackFlagsRegistered)
-		{
-			if (this->MapCallbacks.size() != 0)
-			{
-				_cprintf_s("[Steam_API_Base] CCallbackMgr::UnregisterCallback --> %d --> Flag(s) --> %d\r\n", pCallback->GetICallback(), pCallback->m_nCallbackFlags);
-				pCallback->m_nCallbackFlags &= ~pCallback->k_ECallbackFlagsRegistered;
+	printf("[Steam_API_Base] CCallbackMgr::RegisterCallback --> %d\r\n", iCallback);
 
-				std::multimap<int, class CCallbackBase*>::iterator mapCallbacksIterator;
-
-				for (mapCallbacksIterator = this->MapCallbacks.begin(); mapCallbacksIterator != this->MapCallbacks.end(); mapCallbacksIterator++)
-				{
-					if (mapCallbacksIterator->second == pCallback)
-					{
-						MapCallbacks.erase(mapCallbacksIterator);
-					}
-				}
-			}
-		}
-		else
-		{
-			WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] CCallbackMgr::UnregisterCallback --> Callback is not registered!\r\n");
-		}
-	}
-	else
+	if (!pCallback)
 	{
-		WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] CCallbackMgr::UnregisterCallback --> pCallback is nullptr!\r\n");
+		printf("[Steam_API_Base] Null callback pointer\r\n");
+		return;
 	}
 
-	return;
-}
-
-void CCallbackMgr::RegisterCallResult(CCallbackBase *pCallback, SteamAPICall_t APICall)
-{
-	if (pCallback != nullptr && APICall != k_uAPICallInvalid)
+	// Проверяем, не зарегистрирован ли уже этот колбэк
+	for (auto it = m_Callbacks.begin(); it != m_Callbacks.end(); ++it)
 	{
-		if (pCallback->GetICallback() != 0 && pCallback->GetCallbackSizeBytes() != 0)
+		if (it->second.pCallback == pCallback)
 		{
-			_cprintf_s("[Steam_API_Base] CCallbackMgr::RegisterCallResult --> %lld --> Callback --> %d --> Size --> %d --> Original flag(s) --> %d\r\n", APICall, pCallback->GetICallback(), pCallback->GetCallbackSizeBytes(), pCallback->m_nCallbackFlags);
-
-			pCallback->m_nCallbackFlags |= pCallback->k_ECallbackFlagsRegistered;
-
-			auto it = this->MapAPICalls.find(APICall);
-
-			if (it == this->MapAPICalls.end())
-			{
-				this->MapAPICalls.insert(std::make_pair(APICall, pCallback));
-			}
-			else
-			{
-				WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] CCallbackMgr::RegisterCallResult --> CallResult already exist in map!\r\n");
-				it->second = pCallback;
-			}
-		}
-		else
-		{
-			WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] CCallbackMgr::RegisterCallResult --> Callback is zero!\r\n");
+			printf("[Steam_API_Base] Callback already registered, updating\r\n");
+			it->second.callbackId = iCallback;
+			return;
 		}
 	}
-	else
-	{
-		WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] CCallbackMgr::RegisterCallResult --> pCallback is nullptr or APICall is k_uAPICallInvalid!\r\n");
-	}
 
-	return;
+	// Добавляем новый колбэк
+	CallbackInfo info;
+	info.pCallback = pCallback;
+	info.callbackId = iCallback;
+	m_Callbacks[pCallback] = info;
+
+	printf("[Steam_API_Base] Callback registered successfully\r\n");
 }
 
 void CCallbackMgr::UnregisterCallResult(CCallbackBase *pCallback, SteamAPICall_t APICall)

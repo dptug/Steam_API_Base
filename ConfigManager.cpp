@@ -3,6 +3,8 @@
 #include <algorithm>
 #include "ConfigManager.h"
 
+#define FOREGROUND_YELLOW (FOREGROUND_RED | FOREGROUND_GREEN)
+
 // Внешняя функция для вывода цветного текста
 void WriteColoredText(WORD Color, WORD OriginalColor, const char* Text);
 
@@ -29,94 +31,107 @@ bool CConfigManager::CreateDefaultConfig()
 {
     std::ofstream file(m_ConfigFilePath);
     if (!file.is_open())
+    {
+        WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7,
+            "[Steam_API_Base] Failed to create default configuration file!\r\n");
         return false;
+    }
 
-    file << "; Steam API Base Configuration File\n";
-    file << "; Generated automatically\n\n";
+    try
+    {
+        file << "; Steam API Base Configuration File\r\n";
+        file << "; Generated automatically\r\n\r\n";
+        file << "[steam]\r\n";
+        file << "; Application ID (http://store.steampowered.com/app/%appid%/)\r\n";
+        file << "appid = 480\r\n";  // Значение по умолчанию для тестирования
+        file << "; Current game language\r\n";
+        file << "language = english\r\n";
+        file << "; Enable/disable automatic DLC unlock\r\n";
+        file << "unlockall = false\r\n";
+        file << "; Original Valve's steam_api.dll\r\n";
+        file << "orgapi = steam_api_o.dll\r\n";
+        file << "; Original Valve's steam_api64.dll\r\n";
+        file << "orgapi64 = steam_api64_o.dll\r\n";
+        file << "; Enable/disable extra protection bypasser\r\n";
+        file << "extraprotection = false\r\n";
+        file << "; The game will think that you're offline\r\n";
+        file << "forceoffline = false\r\n";
+        file << "; Some games are checking for the low violence presence\r\n";
+        file << "lowviolence = false\r\n";
+        file << "; Installation path for the game\r\n";
+        file << "installdir = .\\\r\n";
+        file << "; Use DLC id as the appended installation directory\r\n";
+        file << "dlcasinstalldir = true\r\n";
+        file << "; Purchase timestamp for the DLC\r\n";
+        file << "purchasetimestamp = 0\r\n";
+        file << "; Turn on the wrapper mode\r\n";
+        file << "wrappermode = false\r\n\r\n";
 
-    file << "[steam]\n";
-    file << "; Application ID (http://store.steampowered.com/app/%appid%/)\n";
-    file << "appid = 480\n";
-    file << "; Current game language\n";
-    file << "language = english\n";
-    file << "; Enable/disable automatic DLC unlock\n";
-    file << "unlockall = false\n";
-    file << "; Original Valve's steam_api.dll\n";
-    file << "orgapi = steam_api_o.dll\n";
-    file << "; Original Valve's steam_api64.dll\n";
-    file << "orgapi64 = steam_api64_o.dll\n";
-    file << "; Enable/disable extra protection bypasser\n";
-    file << "extraprotection = false\n";
-    file << "; The game will think that you're offline\n";
-    file << "forceoffline = false\n";
-    file << "; Some games are checking for the low violence presence\n";
-    file << "lowviolence = false\n";
-    file << "; Installation path for the game\n";
-    file << "installdir = .\\\n";
-    file << "; Use DLC id as the appended installation directory\n";
-    file << "dlcasinstalldir = true\n";
-    file << "; Purchase timestamp for the DLC\n";
-    file << "purchasetimestamp = 0\n";
-    file << "; Turn on the wrapper mode\n";
-    file << "wrappermode = false\n\n";
+        file << "[steam_misc]\r\n";
+        file << "; Disables the internal SteamUser interface handler\r\n";
+        file << "disableuserinterface = false\r\n";
+        file << "; Disables the internal SteamUtils interface handler\r\n";
+        file << "disableutilsinterface = false\r\n";
+        file << "; Disable the internal reserve hook\r\n";
+        file << "disableregisterinterfacefuncs = false\r\n";
+        file << "; Unlock/Lock Steam parental restrictions\r\n";
+        file << "unlockparentalrestrictions = true\r\n";
+        file << "; SteamId64 to override\r\n";
+        file << "steamid = 0\r\n";
+        file << "; Bypass VAC signature check\r\n";
+        file << "signaturebypass = false\r\n";
+        file << "; Print the backtrace for the vital API functions\r\n";
+        file << "printbacktrace = false\r\n\r\n";
 
-    file << "[steam_misc]\n";
-    file << "; Disables the internal SteamUser interface handler\n";
-    file << "disableuserinterface = false\n";
-    file << "; Disables the internal SteamUtils interface handler\n";
-    file << "disableutilsinterface = false\n";
-    file << "; Disable the internal reserve hook\n";
-    file << "disableregisterinterfacefuncs = false\n";
-    file << "; Unlock/Lock Steam parental restrictions\n";
-    file << "unlockparentalrestrictions = true\n";
-    file << "; SteamId64 to override\n";
-    file << "steamid = 0\n";
-    file << "; Bypass VAC signature check\n";
-    file << "signaturebypass = false\n";
-    file << "; Print the backtrace for the vital API functions\n";
-    file << "printbacktrace = false\n\n";
+        file << "[steam_wrapper]\r\n";
+        file << "; Application ID to override (used when wrapper mode is on)\r\n";
+        file << "newappid = 480\r\n";
+        file << "; Use the internal storage system\r\n";
+        file << "wrapperremotestorage = false\r\n";
+        file << "; Use the internal stats/achievements system\r\n";
+        file << "wrapperuserstats = false\r\n";
+        file << "; Use the internal workshop (UGC) system\r\n";
+        file << "wrapperugc = false\r\n";
+        file << "; Store the data in the current directory\r\n";
+        file << "saveindirectory = false\r\n";
+        file << "; Force the usage of a full save path\r\n";
+        file << "forcefullsavepath = false\r\n";
+        file << "; Disable internal callbacks system\r\n";
+        file << "disablecallbacks = false\r\n";
+        file << "; Disable/Enable a StoreStats callback\r\n";
+        file << "storestatscallback = true\r\n";
+        file << "; Fixed achievements count\r\n";
+        file << "achievementscount = 0\r\n\r\n";
 
-    file << "[steam_wrapper]\n";
-    file << "; Application ID to override (used when wrapper mode is on)\n";
-    file << "newappid = 480\n";
-    file << "; Use the internal storage system\n";
-    file << "wrapperremotestorage = false\n";
-    file << "; Use the internal stats/achievements system\n";
-    file << "wrapperuserstats = false\n";
-    file << "; Use the internal workshop (UGC) system\n";
-    file << "wrapperugc = false\n";
-    file << "; Store the data in the current directory\n";
-    file << "saveindirectory = false\n";
-    file << "; Force the usage of a full save path\n";
-    file << "forcefullsavepath = false\n";
-    file << "; Disable internal callbacks system\n";
-    file << "disablecallbacks = false\n";
-    file << "; Disable/Enable a StoreStats callback\n";
-    file << "storestatscallback = true\n";
-    file << "; Fixed achievements count\n";
-    file << "achievementscount = 0\n\n";
+        file << "[dlc]\r\n";
+        file << "; DLC handling\r\n";
+        file << "; Format: <dlc_id> = <dlc_name>\r\n";
+        file << "; Example: 247295 = Saints Row IV - GAT V Pack\r\n\r\n";
 
-    file << "[dlc]\n";
-    file << "; DLC handling\n";
-    file << "; Format: <dlc_id> = <dlc_description>\n";
-    file << "; Example: 247295 = Saints Row IV - GAT V Pack\n\n";
+        file << "[dlc_installdirs]\r\n";
+        file << "; Installation path for the specific DLC\r\n";
+        file << "; Format: <dlc_id> = <install_dir>\r\n";
+        file << "; Example: 556760 = DLCRoot0\r\n\r\n";
 
-    file << "[dlc_installdirs]\n";
-    file << "; Installation path for the specific DLC\n";
-    file << "; Format: <dlc_id> = <install_dir>\n";
-    file << "; Example: 556760 = DLCRoot0\n\n";
+        file << "[steam_ugc]\r\n";
+        file << "; Subscribed workshop items\r\n";
+        file << "; Format: <ugc_id> = <true/false>\r\n";
+        file << "; Example: 812713531 = true\r\n\r\n";
 
-    file << "[steam_ugc]\n";
-    file << "; Subscribed workshop items\n";
-    file << "; Format: <ugc_id> = <true/false>\n";
-    file << "; Example: 812713531 = true\n\n";
+        file.close();
 
-    file.close();
+        WriteColoredText(FOREGROUND_GREEN | FOREGROUND_INTENSITY, 7,
+            "[Steam_API_Base] Default configuration file created successfully!\r\n");
 
-    WriteColoredText(FOREGROUND_GREEN | FOREGROUND_INTENSITY, 7,
-        "[Steam_API_Base] Default configuration file created!\r\n");
-
-    return true;
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        char buffer[1024];
+        sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Exception while creating default config: %s\r\n", e.what());
+        WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, buffer);
+        return false;
+    }
 }
 
 bool CConfigManager::LoadConfig(const std::string& configPath)
@@ -131,42 +146,91 @@ bool CConfigManager::LoadConfig(const std::string& configPath)
         return CreateDefaultConfig();
     }
 
+    // Очищаем существующие секции перед загрузкой новых
     m_ConfigSections.clear();
 
     std::string line;
     std::string currentSection;
+    int lineNumber = 0;
 
     while (std::getline(file, line))
     {
+        lineNumber++;
         line = Trim(line);
 
         // Пропускаем пустые строки и комментарии
         if (line.empty() || line[0] == ';' || line[0] == '#')
-            continue;
-
-        // Проверяем секции
-        if (line[0] == '[' && line.back() == ']')
         {
-            currentSection = line.substr(1, line.length() - 2);
-            currentSection = Trim(currentSection);
             continue;
         }
 
-        // Парсим ключ=значение
-        size_t equalPos = line.find('=');
-        if (equalPos != std::string::npos && !currentSection.empty())
+        // Проверяем, является ли строка секцией
+        if (line[0] == '[' && line[line.length() - 1] == ']')
         {
-            std::string key = Trim(line.substr(0, equalPos));
-            std::string value = Trim(line.substr(equalPos + 1));
+            currentSection = line.substr(1, line.length() - 2);
+            // Проверяем, что имя секции не пустое
+            if (currentSection.empty())
+            {
+                char buffer[1024];
+                sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Empty section name at line %d\r\n", lineNumber);
+                WriteColoredText(FOREGROUND_YELLOW | FOREGROUND_INTENSITY, 7, buffer);
+                continue;
+            }
+            continue;
+        }
 
-            m_ConfigSections[currentSection][key] = value;
+        // Если секция не установлена, пропускаем
+        if (currentSection.empty())
+        {
+            char buffer[1024];
+            sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Key-value pair without section at line %d\r\n", lineNumber);
+            WriteColoredText(FOREGROUND_YELLOW | FOREGROUND_INTENSITY, 7, buffer);
+            continue;
+        }
+
+        // Разделяем ключ и значение
+        size_t delimiterPos = line.find('=');
+        if (delimiterPos == std::string::npos)
+        {
+            char buffer[1024];
+            sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Invalid key-value format at line %d: %s\r\n", lineNumber, line.c_str());
+            WriteColoredText(FOREGROUND_YELLOW | FOREGROUND_INTENSITY, 7, buffer);
+            continue;
+        }
+
+        std::string key = Trim(line.substr(0, delimiterPos));
+        std::string value = Trim(line.substr(delimiterPos + 1));
+
+        if (key.empty())
+        {
+            char buffer[1024];
+            sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Empty key at line %d\r\n", lineNumber);
+            WriteColoredText(FOREGROUND_YELLOW | FOREGROUND_INTENSITY, 7, buffer);
+            continue;
+        }
+
+        // Добавляем в конфигурацию - БЕЗОПАСНЫЙ СПОСОБ
+        // Проверяем, существует ли секция
+        auto sectionIt = m_ConfigSections.find(currentSection);
+        if (sectionIt == m_ConfigSections.end())
+        {
+            // Секция не существует, создаем ее
+            m_ConfigSections[currentSection] = std::map<std::string, std::string>();
+            sectionIt = m_ConfigSections.find(currentSection);
+        }
+
+        // Теперь безопасно добавляем ключ-значение
+        if (sectionIt != m_ConfigSections.end())
+        {
+            sectionIt->second[key] = value;
         }
     }
 
     file.close();
 
-    WriteColoredText(FOREGROUND_GREEN | FOREGROUND_INTENSITY, 7,
-        "[Steam_API_Base] Configuration loaded successfully!\r\n");
+    char buffer[1024];
+    sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Configuration loaded successfully from: %s\r\n", configPath.c_str());
+    WriteColoredText(FOREGROUND_GREEN | FOREGROUND_INTENSITY, 7, buffer);
 
     return true;
 }
@@ -193,44 +257,53 @@ bool CConfigManager::SaveConfig()
 
 std::string CConfigManager::GetString(const std::string& section, const std::string& key, const std::string& defaultValue)
 {
+    // Проверяем, существует ли секция
     auto sectionIt = m_ConfigSections.find(section);
-    if (sectionIt != m_ConfigSections.end())
+    if (sectionIt == m_ConfigSections.end())
     {
-        auto keyIt = sectionIt->second.find(key);
-        if (keyIt != sectionIt->second.end())
-        {
-            return keyIt->second;
-        }
+        return defaultValue;
     }
-    return defaultValue;
+
+    // Проверяем, существует ли ключ в секции
+    auto keyIt = sectionIt->second.find(key);
+    if (keyIt == sectionIt->second.end())
+    {
+        return defaultValue;
+    }
+
+    return keyIt->second;
 }
 
 int CConfigManager::GetInt(const std::string& section, const std::string& key, int defaultValue)
 {
-    std::string value = GetString(section, key);
-    if (!value.empty())
+    std::string value = GetString(section, key, "");
+    if (value.empty())
     {
-        try
-        {
-            return std::stoi(value);
-        }
-        catch (...)
-        {
-            return defaultValue;
-        }
+        return defaultValue;
     }
-    return defaultValue;
+
+    try
+    {
+        return std::stoi(value);
+    }
+    catch (...)
+    {
+        return defaultValue;
+    }
 }
 
 bool CConfigManager::GetBool(const std::string& section, const std::string& key, bool defaultValue)
 {
-    std::string value = GetString(section, key);
-    if (!value.empty())
+    std::string value = GetString(section, key, "");
+    if (value.empty())
     {
-        std::transform(value.begin(), value.end(), value.begin(), ::tolower);
-        return (value == "true" || value == "1" || value == "yes");
+        return defaultValue;
     }
-    return defaultValue;
+
+    // Преобразуем в нижний регистр для сравнения
+    std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+
+    return (value == "true" || value == "1" || value == "yes" || value == "on");
 }
 
 void CConfigManager::SetString(const std::string& section, const std::string& key, const std::string& value)
@@ -252,20 +325,27 @@ std::vector<std::pair<uint32, std::string>> CConfigManager::GetDLCList()
 {
     std::vector<std::pair<uint32, std::string>> dlcList;
 
+    // Проверяем, существует ли секция [dlc]
     auto sectionIt = m_ConfigSections.find("dlc");
-    if (sectionIt != m_ConfigSections.end())
+    if (sectionIt == m_ConfigSections.end())
     {
-        for (const auto& keyValue : sectionIt->second)
+        return dlcList; // Секция не найдена, возвращаем пустой список
+    }
+
+    // Безопасно обрабатываем все элементы секции
+    for (const auto& keyValue : sectionIt->second)
+    {
+        try
         {
-            try
-            {
-                uint32 dlcId = std::stoul(keyValue.first);
-                dlcList.push_back(std::make_pair(dlcId, keyValue.second));
-            }
-            catch (...)
-            {
-                // Пропускаем некорректные ID
-            }
+            uint32 dlcId = std::stoul(keyValue.first);
+            std::string dlcName = keyValue.second;
+            dlcList.emplace_back(dlcId, dlcName);
+        }
+        catch (...)
+        {
+            char buffer[1024];
+            sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Invalid DLC ID format: %s\r\n", keyValue.first.c_str());
+            WriteColoredText(FOREGROUND_YELLOW | FOREGROUND_INTENSITY, 7, buffer);
         }
     }
 
@@ -276,20 +356,27 @@ std::map<uint32, std::string> CConfigManager::GetDLCInstallDirs()
 {
     std::map<uint32, std::string> installDirs;
 
+    // Проверяем, существует ли секция [dlc_installdirs]
     auto sectionIt = m_ConfigSections.find("dlc_installdirs");
-    if (sectionIt != m_ConfigSections.end())
+    if (sectionIt == m_ConfigSections.end())
     {
-        for (const auto& keyValue : sectionIt->second)
+        return installDirs; // Секция не найдена, возвращаем пустую карту
+    }
+
+    // Безопасно обрабатываем все элементы секции
+    for (const auto& keyValue : sectionIt->second)
+    {
+        try
         {
-            try
-            {
-                uint32 dlcId = std::stoul(keyValue.first);
-                installDirs[dlcId] = keyValue.second;
-            }
-            catch (...)
-            {
-                // Пропускаем некорректные ID
-            }
+            uint32 dlcId = std::stoul(keyValue.first);
+            std::string installDir = keyValue.second;
+            installDirs[dlcId] = installDir;
+        }
+        catch (...)
+        {
+            char buffer[1024];
+            sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Invalid DLC install dir ID format: %s\r\n", keyValue.first.c_str());
+            WriteColoredText(FOREGROUND_YELLOW | FOREGROUND_INTENSITY, 7, buffer);
         }
     }
 
@@ -300,22 +387,33 @@ std::map<uint32, bool> CConfigManager::GetUGCItems()
 {
     std::map<uint32, bool> ugcItems;
 
+    // Проверяем, существует ли секция [steam_ugc]
     auto sectionIt = m_ConfigSections.find("steam_ugc");
-    if (sectionIt != m_ConfigSections.end())
+    if (sectionIt == m_ConfigSections.end())
     {
-        for (const auto& keyValue : sectionIt->second)
+        return ugcItems; // Секция не найдена, возвращаем пустую карту
+    }
+
+    // Безопасно обрабатываем все элементы секции
+    for (const auto& keyValue : sectionIt->second)
+    {
+        try
         {
-            try
-            {
-                uint32 ugcId = std::stoul(keyValue.first);
-                std::string value = keyValue.second;
-                std::transform(value.begin(), value.end(), value.begin(), ::tolower);
-                ugcItems[ugcId] = (value == "true" || value == "1");
-            }
-            catch (...)
-            {
-                // Пропускаем некорректные ID
-            }
+            uint32 ugcId = std::stoul(keyValue.first);
+            std::string value = keyValue.second;
+
+            // Преобразуем строку в нижний регистр для сравнения
+            std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+
+            // Определяем значение true/false
+            bool isEnabled = (value == "true" || value == "1" || value == "yes" || value == "on");
+            ugcItems[ugcId] = isEnabled;
+        }
+        catch (...)
+        {
+            char buffer[1024];
+            sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Invalid UGC ID format: %s\r\n", keyValue.first.c_str());
+            WriteColoredText(FOREGROUND_YELLOW | FOREGROUND_INTENSITY, 7, buffer);
         }
     }
 
@@ -329,12 +427,16 @@ bool CConfigManager::HasSection(const std::string& section)
 
 bool CConfigManager::HasKey(const std::string& section, const std::string& key)
 {
+    // Проверяем, существует ли секция
     auto sectionIt = m_ConfigSections.find(section);
-    if (sectionIt != m_ConfigSections.end())
+    if (sectionIt == m_ConfigSections.end())
     {
-        return sectionIt->second.find(key) != sectionIt->second.end();
+        return false; // Секция не найдена
     }
-    return false;
+
+    // Проверяем, существует ли ключ в секции
+    auto keyIt = sectionIt->second.find(key);
+    return (keyIt != sectionIt->second.end());
 }
 
 void CConfigManager::PrintConfig()

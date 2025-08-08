@@ -9,8 +9,20 @@ typedef bool (S_CALLTYPE *_Steam_BGetCallback)(HSteamPipe hSteamPipe, CallbackMs
 typedef void (S_CALLTYPE *_Steam_FreeLastCallback)(HSteamPipe hSteamPipe);
 typedef bool (S_CALLTYPE *_Steam_GetAPICallResult)(HSteamPipe hSteamPipe, SteamAPICall_t hSteamAPICall, void* pCallback, int cubCallback, int iCallbackExpected, bool* pbFailed);
 
+struct CallbackInfo
+{
+	class CCallbackBase* pCallback;
+	int callbackId;
+
+	CallbackInfo() : pCallback(nullptr), callbackId(0) {}
+	CallbackInfo(class CCallbackBase* callback, int id) : pCallback(callback), callbackId(id) {}
+};
+
 class CCallbackMgr
 {
+private:
+	// Используем указатель на колбэк как ключ вместо int
+	std::map<class CCallbackBase*, CallbackInfo> m_Callbacks;
 public:
 	_Steam_BGetCallback oSteam_BGetCallback;
 	_Steam_FreeLastCallback oSteam_FreeLastCallback;

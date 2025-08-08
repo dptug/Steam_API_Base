@@ -123,9 +123,20 @@ std::string CSteamSettings::GetDLCInstallPath(uint32 dlcId) const
 
 uint32 CSteamSettings::GetActiveAppId() const
 {
-    if (m_SteamConfig.wrapperMode)
-        return m_WrapperConfig.newAppId;
+    printf("[Steam_API_Base] GetActiveAppId called\r\n");
+    printf("  wrapperMode: %s\r\n", m_SteamConfig.wrapperMode ? "true" : "false");
+    printf("  main appId: %u\r\n", m_SteamConfig.appId);
+    printf("  wrapper newAppId: %u\r\n", m_WrapperConfig.newAppId);
 
+    // Если включен режим обертки, используем newAppId для подмены
+    if (m_SteamConfig.wrapperMode)
+    {
+        printf("  Wrapper mode ON - using newAppId for substitution: %u\r\n", m_WrapperConfig.newAppId);
+        return m_WrapperConfig.newAppId;
+    }
+
+    // В обычном режиме используем основной AppID
+    printf("  Wrapper mode OFF - using main appId: %u\r\n", m_SteamConfig.appId);
     return m_SteamConfig.appId;
 }
 

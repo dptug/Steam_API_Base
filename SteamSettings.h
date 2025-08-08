@@ -105,6 +105,15 @@ public:
     std::string GetGameLanguage() const;
 
     void PrintSettings() const; // Для отладки
+
+    // Получить оригинальный AppID (до подмены)
+    uint32 GetOriginalAppId() const { return m_SteamConfig.appId; }
+
+    // Получить AppID для подмены (только в режиме обертки)
+    uint32 GetWrapperAppId() const { return m_WrapperConfig.newAppId; }
+
+    // Проверить, включен ли режим обертки
+    bool IsWrapperMode() const { return m_SteamConfig.wrapperMode; }
 };
 
 extern CSteamSettings* GSteamSettings();

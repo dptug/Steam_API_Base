@@ -29,8 +29,29 @@
 
 #include <synchapi.h>
 
-extern "C" {
-	S_API bool S_CALLTYPE SteamAPI_SetAppID(uint32 unAppID);
+void EnsureNoSteamAppIdFile()
+{
+	const char* appIdFileName = "steam_appid.txt";
+
+	// Проверяем существование файла
+	DWORD fileAttributes = GetFileAttributesA(appIdFileName);
+
+	if (fileAttributes != INVALID_FILE_ATTRIBUTES)
+	{
+		// Файл существует, удаляем его
+		if (DeleteFileA(appIdFileName))
+		{
+			WriteColoredText(FOREGROUND_YELLOW | FOREGROUND_INTENSITY, 7,
+				"[Steam_API_Base] Removed existing steam_appid.txt file\r\n");
+		}
+		else
+		{
+			DWORD error = GetLastError();
+			char buffer[1024]; // Добавить в начало функции
+			sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Failed to remove steam_appid.txt (Error: %lu)\r\n", error);
+			WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, buffer);
+		}
+	}
 }
 
 void LogWinAPIError(const char* functionName, DWORD errorCode)
@@ -160,86 +181,96 @@ void* InternalAPI_Init(HMODULE *hSteamclient, bool bInitLocal, const char *Inter
 	return nullptr;
 }
 
-BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpvReserved)
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
-	if (dwReason == DLL_PROCESS_ATTACH)
+	switch (ul_reason_for_call)
 	{
-		_invalid_parameter_handler OldHandler, NewHandler;
-		NewHandler = MyInvalidParameterHandler;
-		OldHandler = _set_invalid_parameter_handler(NewHandler);
-
+	case DLL_PROCESS_ATTACH:
+	{
+		// Устанавливаем обработчики ошибок
+		_set_invalid_parameter_handler(MyInvalidParameterHandler);
 		_set_new_handler(FailedMemoryAllocationHandler);
+		_set_new_mode(1);
 
 		AllocConsole();
-
 		FILE* fp_stdout = nullptr;
-		FILE* fp_stderr = nullptr;
+		freopen_s(&fp_stdout, "CONOUT$", "w", stdout);
 
-		freopen_s(&fp_stdout, "stdout.txt", "w", stdout);
-		freopen_s(&fp_stderr, "stderr.txt", "w", stderr);
+		printf("[Steam_API_Base] DLL_PROCESS_ATTACH started\r\n");
 
-		char szFullDllPath[MAX_PATH] = { 0 };
+		// Удаляем steam_appid.txt если он существует
+		EnsureNoSteamAppIdFile();
 
-		const DWORD ModuleFileName = GetModuleFileNameA(hModule, szFullDllPath, sizeof(szFullDllPath));
+		printf("[Steam_API_Base] Loading configuration...\r\n");
 
-		if (ModuleFileName == 0)
+		// Инициализируем конфигурацию
+		if (!GConfigManager()->LoadConfig())
 		{
-			MessageBoxW(nullptr, L"Unable to get dll name (1)!", L"Steam API Base", MB_ICONERROR);
-			ExitProcess(0);
+			printf("[Steam_API_Base] Failed to load configuration!\r\n");
+		}
+		else
+		{
+			printf("[Steam_API_Base] Configuration loaded successfully\r\n");
+
+			// Выводим содержимое конфига для отладки
+			printf("[Steam_API_Base] Debug config:\r\n");
+			printf("  appid: %d\r\n", GConfigManager()->GetInt("steam", "appid", 0));
+			printf("  wrappermode: %s\r\n", GConfigManager()->GetBool("steam", "wrappermode", false) ? "true" : "false");
+			printf("  newappid: %d\r\n", GConfigManager()->GetInt("steam_wrapper", "newappid", 0));
 		}
 
-		if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+		printf("[Steam_API_Base] Loading Steam settings...\r\n");
+
+		// Загружаем настройки
+		if (!GSteamSettings()->LoadSettings())
 		{
-			MessageBoxW(nullptr, L"Unable to get dll name (2)!", L"Steam API Base", MB_ICONERROR);
-			ExitProcess(0);
+			printf("[Steam_API_Base] Failed to load Steam settings!\r\n");
+		}
+		else
+		{
+			printf("[Steam_API_Base] Steam settings loaded successfully\r\n");
+
+			// Выводим настройки для отладки
+			printf("[Steam_API_Base] Debug Steam settings:\r\n");
+			printf("  Original AppID: %u\r\n", GSteamSettings()->GetOriginalAppId());
+			printf("  Wrapper AppID: %u\r\n", GSteamSettings()->GetWrapperAppId());
+			printf("  Wrapper Mode: %s\r\n", GSteamSettings()->IsWrapperMode() ? "true" : "false");
+			printf("  Active AppID (after substitution): %u\r\n", GSteamSettings()->GetActiveAppId());
 		}
 
-		_cprintf_s("[Steam_API_Base] Dll Path --> %s\r\n", szFullDllPath);
+		// Проверяем, что AppID установлен корректно
+		uint32 activeAppID = GSteamSettings()->GetActiveAppId();
+		printf("[Steam_API_Base] Final Active AppID: %u\r\n", activeAppID);
 
-        /*#if defined(_M_IX86)
-		    if (StrStrIA(szFullDllPath, "steam_api.dll") == nullptr)
-		    {
-				MessageBoxW(nullptr, L"Dll name must be steam_api.dll!", L"Steam API Base", MB_ICONERROR);
-				ExitProcess(0);
-		    }
-        #endif
-        #if defined(_M_AMD64)
-			if (StrStrIA(szFullDllPath, "steam_api64.dll") == nullptr)
-			{
-				MessageBoxW(nullptr, L"Dll name must be steam_api64.dll!", L"Steam API Base", MB_ICONERROR);
-				ExitProcess(0);
-			}
-        #endif*/
+		{
+			char buffer[1024];
+			sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Final Active AppID: %u\r\n", activeAppID);
+			WriteColoredText(FOREGROUND_GREEN | FOREGROUND_INTENSITY, 7, buffer);
+		}
 
-		_cprintf_s("[Steam_API_Base] PID --> %lu\r\n", GetCurrentProcessId());
-		_cprintf_s("[Steam_API_Base] ThreadID --> %lu\r\n", GetCurrentThreadId());
+		// Инициализация остальных компонентов
+		InitializeSRWLock(&ContextLock);
+		InitializeSRWLock(&CallbackLock);
 
 		GetInterfacePointers.Clear();
 		GetGameServerInterfacePointers.Clear();
 
-		InitializeSRWLock(&ContextLock);
-		InitializeSRWLock(&CallbackLock);
+		printf("[Steam_API_Base] DLL_PROCESS_ATTACH completed\r\n");
 
-		// Загружаем конфигурацию
-		if (!GConfigManager()->LoadConfig())
-		{
-			WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7,
-				"[Steam_API_Base] Failed to load configuration!\r\n");
-		}
-
-		if (!GSteamSettings()->LoadSettings())
-		{
-			WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7,
-				"[Steam_API_Base] Failed to load Steam settings!\r\n");
-		}
-		else
-		{
-			// Выводим основную информацию о настройках
-			GSteamSettings()->PrintSettings();
-		}
-
-		Win32MiniDump = new CWin32MiniDump();
+		break;
 	}
-
-	return 1;
+	case DLL_THREAD_ATTACH:
+		break;
+	case DLL_THREAD_DETACH:
+		break;
+	case DLL_PROCESS_DETACH:
+		// Очистка при выгрузке DLL
+		if (lpReserved == NULL)
+		{
+			// Вызвано FreeLibrary, выполняем очистку
+			SteamAPI_Shutdown();
+		}
+		break;
+	}
+	return TRUE;
 }
