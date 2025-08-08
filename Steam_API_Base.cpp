@@ -27,10 +27,33 @@
 #include "ConfigManager.h"
 #include "SteamSettings.h"
 
+#include <synchapi.h>
+
+extern "C" {
+	S_API bool S_CALLTYPE SteamAPI_SetAppID(uint32 unAppID);
+}
+
+void LogWinAPIError(const char* functionName, DWORD errorCode)
+{
+	char errorMessage[256];
+	FormatMessageA(
+		FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+		nullptr,
+		errorCode,
+		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+		errorMessage,
+		sizeof(errorMessage),
+		nullptr);
+
+	_cprintf_s("[Steam_API_Base] %s failed with error %lu: %s\r\n",
+		functionName, errorCode, errorMessage);
+}
+
 void MyInvalidParameterHandler(const wchar_t* expression, const wchar_t* function, const wchar_t* file, unsigned int line, uintptr_t pReserved)
 {
-	MessageBoxW(nullptr, L"steam_api(64).dll Crashed (Invalid Parameter Handler)!", L"Invalid Parameter Handler", MB_ICONERROR);
-	ExitProcess(0);
+	WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7,
+		"[Steam_API_Base] Invalid parameter handler triggered!\r\n");
+	// Логирование вместо немедленного выхода
 }
 
 int FailedMemoryAllocationHandler(size_t Size)

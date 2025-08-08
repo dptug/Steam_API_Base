@@ -5,6 +5,9 @@
 extern bool bCallbackManagerInitialized;
 CCallbackMgr* GCallbackMgr();
 
+#define FOREGROUND_YELLOW (FOREGROUND_RED | FOREGROUND_GREEN)
+#define FOREGROUND_CYAN (FOREGROUND_BLUE | FOREGROUND_GREEN)
+
 bool bAnonymousUser = false;
 
 uint32 CheckCallbackRegistered(int iCallbackNum)
@@ -350,8 +353,67 @@ S_API ESteamAPIInitResult S_CALLTYPE SteamInternal_SteamAPI_Init(const char* psz
 
 S_API bool S_CALLTYPE SteamAPI_Init()
 {
+	// Объявляем buffer в начале функции
+	char buffer[256];
+
+	// Сначала проверяем steam_appid.txt
+	int appIdFromFile = 0;
+	std::ifstream appIdFile("steam_appid.txt");
+	if (appIdFile.is_open())
+	{
+		appIdFile >> appIdFromFile;
+		appIdFile.close();
+
+		sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Found steam_appid.txt with AppID: %d\r\n", appIdFromFile);
+		WriteColoredText(FOREGROUND_GREEN | FOREGROUND_INTENSITY, 7, buffer);
+	}
+	else
+	{
+		sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] steam_appid.txt not found, will use config AppID\r\n");
+		WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, buffer);
+	}
+
+	// Загружаем настройки из конфига
+	CConfigManager* config = GConfigManager();
+	int configAppId = config->GetInt("steam", "appid", 480);
+
+	// Если нашли steam_appid.txt, используем его AppID
+	if (appIdFromFile > 0)
+	{
+		// Обновляем AppID в конфиге (только в памяти, не сохраняя в файл)
+		config->SetInt("steam", "appid", appIdFromFile);
+
+		sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Overriding config AppID: %d -> %d\r\n", configAppId, appIdFromFile);
+		WriteColoredText(FOREGROUND_YELLOW | FOREGROUND_INTENSITY, 7, buffer);
+	}
+
 	bAnonymousUser = false;
-	return SteamInternal_SteamAPI_Init(nullptr, nullptr) == k_ESteamAPIInitResult_OK;
+	bool result = SteamInternal_SteamAPI_Init(nullptr, nullptr) == k_ESteamAPIInitResult_OK;
+
+	if (result)
+	{
+		WriteColoredText(FOREGROUND_GREEN | FOREGROUND_INTENSITY, 7,
+			"[Steam_API_Base] SteamAPI_Init successful\r\n");
+
+		// Показываем финальный AppID
+		int finalAppId = config->GetInt("steam", "appid", 480);
+		sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Final AppID: %d\r\n", finalAppId);
+		WriteColoredText(FOREGROUND_CYAN | FOREGROUND_INTENSITY, 7, buffer);
+	}
+	else
+	{
+		WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7,
+			"[Steam_API_Base] SteamAPI_Init failed!\r\n");
+
+		DWORD error = GetLastError();
+		if (error != 0)
+		{
+			sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] GetLastError: %lu\r\n", error);
+			WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, buffer);
+		}
+	}
+
+	return result;
 }
 
 S_API ESteamAPIInitResult S_CALLTYPE SteamAPI_InitFlat(SteamErrMsg* pOutErrMsg)
@@ -505,75 +567,45 @@ S_API bool S_CALLTYPE SteamAPI_RestartAppIfNecessary(uint32 unOwnAppID)
 	return true;
 }
 
-S_API void* S_CALLTYPE SteamInternal_ContextInit(void *pContextInitData)
+S_API void* S_CALLTYPE SteamInternal_ContextInit(void* pContextInitData)
 {
 	_cprintf_s("[Steam_API_Base] SteamInternal_ContextInit\r\n");
 
 	if (pContextInitData != nullptr)
 	{
-        #if defined(_M_IX86)
+#if defined(_M_IX86)
 		ContextInit* InitData = (ContextInit*)pContextInitData;
-
 		char* pPointer = static_cast<char*>(pContextInitData);
-
 		if (InitData->Counter == ContextCounter)
+		{
 			return pPointer + 8;
-
-		AcquireSRWLockExclusive(&ContextLock);
+		}
 
 		if (InitData->Counter != ContextCounter)
 		{
 			InitData->pFn(pPointer + 8);
 			InitData->Counter = ContextCounter;
 		}
-
-		ReleaseSRWLockExclusive(&ContextLock);
-
 		return pPointer + 8;
-        #endif
-
-        #if defined(_M_AMD64)
+#endif
+#if defined(_M_AMD64)
+		// Аналогично для x64
 		ContextInit* InitData = (ContextInit*)pContextInitData;
-
 		char* pPointer = static_cast<char*>(pContextInitData);
-
 		if (InitData->Counter == ContextCounter)
+		{
 			return pPointer + 16;
-
-		AcquireSRWLockExclusive(&ContextLock);
+		}
 
 		if (InitData->Counter != ContextCounter)
 		{
 			InitData->pFn(pPointer + 16);
 			InitData->Counter = ContextCounter;
 		}
-
-		ReleaseSRWLockExclusive(&ContextLock);
-
 		return pPointer + 16;
-        #endif
+#endif
 	}
 
 	WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] SteamInternal_ContextInit Failed!\r\n");
 	return nullptr;
-
-	//SDK 1.42
-/*#if defined(_M_IX86)
-	__asm
-	{
-	    mov esi, [pContextInitData]
-	    mov eax, [esi + 4]
-	    cmp eax, ContextCounter
-	    lea eax, [esi + 8]
-	    jz Skip
-	    push eax
-	    mov eax, [esi]
-	    call eax
-	    mov eax, ContextCounter
-	    add esp, 4
-	    mov[esi + 4], eax
-	    lea eax, [esi + 8]
-	    Skip:
-	}
-#endif*/
 }

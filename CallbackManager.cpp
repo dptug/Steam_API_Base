@@ -3,6 +3,7 @@
 #include "Steam\steam_api.h"
 #include "Steam\steamclientpublic.h"
 #include "CallbackManager.h"
+#include <vector>
 
 void WriteColoredText(WORD Color, WORD OriginalColor, const char* Text);
 bool bCallbackManagerInitialized = false;
@@ -28,7 +29,6 @@ CCallbackMgr::CCallbackMgr()
 CCallbackMgr::~CCallbackMgr()
 {
 	WriteColoredText(FOREGROUND_BLUE | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] CCallbackMgr::Destructor\r\n");
-
 	bCallbackManagerInitialized = false;
 	this->oSteam_BGetCallback = nullptr;
 	this->oSteam_FreeLastCallback = nullptr;
@@ -37,6 +37,13 @@ CCallbackMgr::~CCallbackMgr()
 	this->ManualDispatchCallback = 0;
 	this->ManualDispatchCallbackSize = 0;
 	this->bIsRunningCallbacks = false;
+
+	// === ТАКАЯ ЖЕ ОЧИСТКА КАК В Unload ===
+	for (auto& pair : this->MapAPIBuffer)
+	{
+		delete[] pair.second;
+	}
+	this->MapAPIBuffer.clear();
 	this->MapCallbacks.clear();
 	this->MapAPICalls.clear();
 }
@@ -44,7 +51,6 @@ CCallbackMgr::~CCallbackMgr()
 void CCallbackMgr::Unload()
 {
 	WriteColoredText(FOREGROUND_BLUE | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] CCallbackMgr::Unload\r\n");
-
 	bCallbackManagerInitialized = false;
 	this->oSteam_BGetCallback = nullptr;
 	this->oSteam_FreeLastCallback = nullptr;
@@ -53,52 +59,54 @@ void CCallbackMgr::Unload()
 	this->ManualDispatchCallback = 0;
 	this->ManualDispatchCallbackSize = 0;
 	this->bIsRunningCallbacks = false;
+
+	// === ДОБАВИТЬ ОЧИСТКУ ПАМЯТИ ===
+	for (auto& pair : this->MapAPIBuffer)
+	{
+		delete[] pair.second;  // Освобождаем каждый выделенный буфер
+	}
+	this->MapAPIBuffer.clear();
+
 	this->MapCallbacks.clear();
 	this->MapAPICalls.clear();
 }
 
+// Уберите удаление из MapAPICalls из метода RunCallResult:
 void CCallbackMgr::RunCallResult(HSteamPipe hSteamPipe, SteamAPICall_t APICall, CCallbackBase* pCallback)
 {
-	_cprintf_s("[Steam_API_Base] Running CallResult --> %lld --> Callback --> %d --> Size --> %d\r\n", APICall, pCallback->GetICallback(), pCallback->GetCallbackSizeBytes());
+	_cprintf_s("[Steam_API_Base] Running CallResult --> %lld --> Callback --> %d --> Size --> %d\r\n",
+		APICall, pCallback->GetICallback(), pCallback->GetCallbackSizeBytes());
 
 	BYTE* CallResultBuffer = new BYTE[pCallback->GetCallbackSizeBytes()]();
-
 	bool pbFailed = false;
 
-	// If hSteamAPICall is not found, IsAPICallCompleted is called and the result is stored in pbFailed. GetAPICallResult returns false and no data is copied to the buffer.
-	// If iCallbackExpected is incorrect, both GetAPICallResult and pbFailed will return true and no data is copied to the buffer.
-	// If the expected size is the same size as cubCallback the data is copied to the buffer with that size.
-	// If the expected size is larger than cubCallback the data is copied to the buffer with cubCallback.
-	// If the expected size is less than cubCallback but >= 1024 bytes the data is copied to the buffer with the expected size.
-	// If the expected size is less than cubCallback but <= 1023 bytes the data is padded with zeros to cubCallback (up to 1024 bytes) and copied to the buffer with that size.
-	bool bAPICall = this->oSteam_GetAPICallResult(hSteamPipe, APICall, CallResultBuffer, pCallback->GetCallbackSizeBytes(), pCallback->GetICallback(), &pbFailed);
+	bool bAPICall = this->oSteam_GetAPICallResult(hSteamPipe, APICall, CallResultBuffer,
+		pCallback->GetCallbackSizeBytes(), pCallback->GetICallback(), &pbFailed);
 
-	// Callback data was only copied to the buffer if pbFailed is false
 	if (bAPICall == true && pbFailed == false)
 	{
 		size_t OriginalCallbackMapSize = this->MapCallbacks.size();
-
 		pCallback->Run(CallResultBuffer, pbFailed, APICall);
 
-		//Left 4 Dead 2 lobby hack
+		// Left 4 Dead 2 lobby hack
 		if (OriginalCallbackMapSize != this->MapCallbacks.size())
 		{
-			WriteColoredText(FOREGROUND_BLUE | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] Callback(s) was added or removed while CallResult was running!\r\n");
-
+			WriteColoredText(FOREGROUND_BLUE | FOREGROUND_INTENSITY, 7,
+				"[Steam_API_Base] Callback(s) was added or removed while CallResult was running!\r\n");
 			this->MapCallbacks.erase(LobbyEnter_t::k_iCallback);
 			pCallback->Run(CallResultBuffer);
 		}
 
 		this->MapAPIBuffer.insert(std::make_pair(APICall, CallResultBuffer));
+		// УБРАЛИ: this->MapAPICalls.erase(APICall);
 	}
 	else
 	{
-		WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] Steam_GetAPICallResult Failed!\r\n");
-
-		delete[]CallResultBuffer;
+		WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7,
+			"[Steam_API_Base] Steam_GetAPICallResult Failed!\r\n");
+		delete[] CallResultBuffer;
+		// УБРАЛИ: this->MapAPICalls.erase(APICall);
 	}
-
-	return;
 }
 
 void  CCallbackMgr::RunCallbacks(HSteamPipe hSteamPipe, bool bGameServerCallbacks)
@@ -115,19 +123,27 @@ void  CCallbackMgr::RunCallbacks(HSteamPipe hSteamPipe, bool bGameServerCallback
 			if (CallbackMsg.m_iCallback == SteamAPICallCompleted_t::k_iCallback && CallbackMsg.m_cubParam == sizeof(SteamAPICallCompleted_t))
 			{
 				SteamAPICallCompleted_t* SteamAPICallCompleted = (SteamAPICallCompleted_t*)CallbackMsg.m_pubParam;
-
 				if (this->MapAPICalls.size() != 0)
 				{
-					std::map<SteamAPICall_t, CCallbackBase*>::iterator mapCallResultIterator;
+					// Собираем идентификаторы для удаления
+					std::vector<SteamAPICall_t> callsToRemove;
 
-					for (mapCallResultIterator = this->MapAPICalls.begin(); mapCallResultIterator != this->MapAPICalls.end(); mapCallResultIterator++)
+					// Безопасно итерируемся, собираем что нужно удалить
+					for (auto& pair : this->MapAPICalls)
 					{
-						if (SteamAPICallCompleted->m_hAsyncCall == mapCallResultIterator->first &&
-							SteamAPICallCompleted->m_iCallback == mapCallResultIterator->second->GetICallback() &&
-							SteamAPICallCompleted->m_cubParam == (uint32)mapCallResultIterator->second->GetCallbackSizeBytes())
+						if (SteamAPICallCompleted->m_hAsyncCall == pair.first &&
+							SteamAPICallCompleted->m_iCallback == pair.second->GetICallback() &&
+							SteamAPICallCompleted->m_cubParam == (uint32)pair.second->GetCallbackSizeBytes())
 						{
-							this->RunCallResult(hSteamPipe, mapCallResultIterator->first, mapCallResultIterator->second);
+							this->RunCallResult(hSteamPipe, pair.first, pair.second);
+							callsToRemove.push_back(pair.first);
 						}
+					}
+
+					// Удаляем уже после итерации
+					for (SteamAPICall_t callId : callsToRemove)
+					{
+						this->MapAPICalls.erase(callId);
 					}
 				}
 			}
@@ -200,19 +216,27 @@ void CCallbackMgr::RunCallbacksTryCatch(HSteamPipe hSteamPipe, bool bGameServerC
 				if (CallbackMsg.m_iCallback == SteamAPICallCompleted_t::k_iCallback && CallbackMsg.m_cubParam == sizeof(SteamAPICallCompleted_t))
 				{
 					SteamAPICallCompleted_t* SteamAPICallCompleted = (SteamAPICallCompleted_t*)CallbackMsg.m_pubParam;
-
 					if (this->MapAPICalls.size() != 0)
 					{
-						std::map<SteamAPICall_t, CCallbackBase*>::iterator mapCallResultIterator;
+						// Собираем идентификаторы для удаления
+						std::vector<SteamAPICall_t> callsToRemove;
 
-						for (mapCallResultIterator = this->MapAPICalls.begin(); mapCallResultIterator != this->MapAPICalls.end(); mapCallResultIterator++)
+						// Безопасно итерируемся, собираем что нужно удалить
+						for (auto& pair : this->MapAPICalls)
 						{
-							if (SteamAPICallCompleted->m_hAsyncCall == mapCallResultIterator->first &&
-								SteamAPICallCompleted->m_iCallback == mapCallResultIterator->second->GetICallback() &&
-								SteamAPICallCompleted->m_cubParam == (uint32)mapCallResultIterator->second->GetCallbackSizeBytes())
+							if (SteamAPICallCompleted->m_hAsyncCall == pair.first &&
+								SteamAPICallCompleted->m_iCallback == pair.second->GetICallback() &&
+								SteamAPICallCompleted->m_cubParam == (uint32)pair.second->GetCallbackSizeBytes())
 							{
-								this->RunCallResult(hSteamPipe, mapCallResultIterator->first, mapCallResultIterator->second);
+								this->RunCallResult(hSteamPipe, pair.first, pair.second);
+								callsToRemove.push_back(pair.first);
 							}
+						}
+
+						// Удаляем уже после итерации
+						for (SteamAPICall_t callId : callsToRemove)
+						{
+							this->MapAPICalls.erase(callId);
 						}
 					}
 				}
