@@ -280,8 +280,7 @@ S_API ISteamUtils* S_CALLTYPE SteamUtils()
 
 S_API void* S_CALLTYPE SteamUnifiedMessages()
 {
-	WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7,
-		"[Steam_API_Base] SteamUnifiedMessages is removed in new SDK versions!\r\n");
+	MessageBoxW(nullptr, L"SteamUnifiedMessages is removed in new SDK versions!", L"Steam API Base", MB_ICONERROR);
 	return nullptr;
 }
 

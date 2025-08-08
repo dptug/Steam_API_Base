@@ -20,7 +20,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CallbackManager.h" />
-    <ClInclude Include="ConfigManager.h" />
     <ClInclude Include="FindPatternFunctions.h" />
     <ClInclude Include="Functions\Callbacks.h" />
     <ClInclude Include="Functions\Client.h" />
@@ -32,7 +31,6 @@
     <ClInclude Include="Functions\Minidump.h" />
     <ClInclude Include="Functions\Shutdown.h" />
     <ClInclude Include="RegistryFunctions.h" />
-    <ClInclude Include="SteamSettings.h" />
     <ClInclude Include="Steam\isteamapplist.h" />
     <ClInclude Include="Steam\isteamapps.h" />
     <ClInclude Include="Steam\isteamappticket.h" />
@@ -84,8 +82,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CallbackManager.cpp" />
-    <ClCompile Include="ConfigManager.cpp" />
-    <ClCompile Include="SteamSettings.cpp" />
     <ClCompile Include="Steam_API_Base.cpp" />
     <ClCompile Include="Win32MiniDump.cpp" />
   </ItemGroup>
@@ -177,7 +173,8 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_DEBUG;SteamAPIBase_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -212,7 +209,8 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>

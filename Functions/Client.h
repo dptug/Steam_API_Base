@@ -1,12 +1,6 @@
-#include "SteamSettings.h"
-#pragma comment(lib, "Shlwapi.lib")
-
 //#include "../FindPatternFunctions.h"
 extern bool bCallbackManagerInitialized;
 CCallbackMgr* GCallbackMgr();
-
-#define FOREGROUND_YELLOW (FOREGROUND_RED | FOREGROUND_GREEN)
-#define FOREGROUND_CYAN (FOREGROUND_BLUE | FOREGROUND_GREEN)
 
 bool bAnonymousUser = false;
 
@@ -156,45 +150,8 @@ S_API ESteamAPIInitResult S_CALLTYPE SteamInternal_SteamAPI_Init(const char* psz
 
 	if (SteamClient_Client != nullptr)
 	{
-		WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] SteamAPI_Init has already been called!\r\n");
+		WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] SteamAPI_Init has already been called, SteamAPI_Shutdown must be used before it can be called again!\r\n");
 		return k_ESteamAPIInitResult_OK;
-	}
-
-	// Получаем настройки
-	CSteamSettings* settings = GSteamSettings();
-	const auto& config = settings->GetSteamConfig();
-	const auto& miscConfig = settings->GetMiscConfig();
-	const auto& wrapperConfig = settings->GetWrapperConfig();
-
-	// Определяем активный App ID
-	uint32 activeAppId = settings->GetActiveAppId();
-	_cprintf_s("[Steam_API_Base] Using App ID: %u\r\n", activeAppId);
-
-	// Устанавливаем переменные окружения
-	char szAppID[32] = { 0 };
-	_snprintf_s(szAppID, 32, _TRUNCATE, "%u", activeAppId);
-	SetEnvironmentVariableA("SteamAppId", szAppID);
-
-	// Устанавливаем язык игры
-	std::string language = settings->GetGameLanguage();
-	if (!language.empty())
-	{
-		SetEnvironmentVariableA("SteamLanguage", language.c_str());
-		_cprintf_s("[Steam_API_Base] Language set to: %s\r\n", language.c_str());
-	}
-
-	// Устанавливаем режим офлайн
-	if (config.forceOffline)
-	{
-		SetEnvironmentVariableA("SteamForceOffline", "1");
-		_cprintf_s("[Steam_API_Base] Force offline mode enabled\r\n");
-	}
-
-	// Проверяем настройку низкой жестокости
-	if (config.lowViolence)
-	{
-		SetEnvironmentVariableA("SteamLowViolence", "1");
-		_cprintf_s("[Steam_API_Base] Low violence mode enabled\r\n");
 	}
 
 	SteamClient_Client = static_cast<ISteamClient*>(InternalAPI_Init(&hSteamclient_Client, bAnonymousUser, STEAMCLIENT_INTERFACE_VERSION));
@@ -226,7 +183,6 @@ S_API ESteamAPIInitResult S_CALLTYPE SteamInternal_SteamAPI_Init(const char* psz
 
 	if (hUser != 0)
 	{
-		// Проверка интерфейсов
 		if (pszInternalCheckInterfaceVersions != nullptr)
 		{
 			HMODULE hDll = hSteamclient_Client;
@@ -247,28 +203,41 @@ S_API ESteamAPIInitResult S_CALLTYPE SteamInternal_SteamAPI_Init(const char* psz
 
 		if (pSteamUtils != nullptr)
 		{
-			// Переопределяем App ID если нужно
-			if (config.wrapperMode)
+			uint32 AppID = pSteamUtils->GetAppID();
+
+			if (AppID != 0)
 			{
-				_cprintf_s("[Steam_API_Base] Wrapper mode enabled, overriding App ID: %u -> %u\r\n",
-					pSteamUtils->GetAppID(), activeAppId);
-			}
+				if (GetEnvironmentVariableA("SteamAppId", nullptr, 0) == 0)
+				{
+					char szAppID[MAX_PATH] = { 0 };
+					_snprintf_s(szAppID, MAX_PATH, _TRUNCATE, "%u", AppID);
 
-			// Настройка Game ID
-			char szGameID[MAX_PATH] = { 0 };
-			_snprintf_s(szGameID, MAX_PATH, _TRUNCATE, "%llu", CGameID(activeAppId).ToUint64());
-			SetEnvironmentVariableA("SteamGameId", szGameID);
-			SetEnvironmentVariableA("SteamOverlayGameId", szGameID);
+					SetEnvironmentVariableA("SteamAppId", szAppID);
+				}
 
-			SteamAPI_SetBreakpadAppID(activeAppId);
-			Steam_RegisterInterfaceFuncs(hSteamclient_Client);
-			LoadBreakpad(hSteamclient_Client);
+				if (GetEnvironmentVariableA("SteamGameId", nullptr, 0) == 0)
+				{
+					char szGameID[MAX_PATH] = { 0 };
+					_snprintf_s(szGameID, MAX_PATH, _TRUNCATE, "%llu", CGameID(AppID).ToUint64());
 
-			SteamClient_Client->Set_SteamAPI_CCheckCallbackRegisteredInProcess(CheckCallbackRegistered);
+					SetEnvironmentVariableA("SteamGameId", szGameID);
+					SetEnvironmentVariableA("SteamOverlayGameId", szGameID);
+				}
 
-			// Загрузка GameOverlayRenderer
-			if (!config.forceOffline)
-			{
+				if (GetEnvironmentVariableA("SteamOverlayGameId", nullptr, 0) == 0)
+				{
+					char szGameID[MAX_PATH] = { 0 };
+					_snprintf_s(szGameID, MAX_PATH, _TRUNCATE, "%llu", CGameID(AppID).ToUint64());
+
+					SetEnvironmentVariableA("SteamOverlayGameId", szGameID);
+				}
+
+				SteamAPI_SetBreakpadAppID(AppID);
+				Steam_RegisterInterfaceFuncs(hSteamclient_Client);
+				LoadBreakpad(hSteamclient_Client);
+
+				SteamClient_Client->Set_SteamAPI_CCheckCallbackRegisteredInProcess(CheckCallbackRegistered);
+
 				HMODULE hGameOverlayRenderer = nullptr;
 
 #if defined(_M_IX86)
@@ -278,7 +247,7 @@ S_API ESteamAPIInitResult S_CALLTYPE SteamInternal_SteamAPI_Init(const char* psz
 				hGameOverlayRenderer = GetModuleHandleW(L"GameOverlayRenderer64.dll");
 #endif
 
-				if (activeAppId != 769 && hGameOverlayRenderer == nullptr)
+				if (AppID != 769 && hGameOverlayRenderer == nullptr)
 				{
 					const char* InstallPath = SteamAPI_GetSteamInstallPath();
 
@@ -296,45 +265,49 @@ S_API ESteamAPIInitResult S_CALLTYPE SteamInternal_SteamAPI_Init(const char* psz
 						LoadLibraryExA(szOverlayDllPath, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
 					}
 				}
-			}
 
-			ISteamUser* pSteamUser = (ISteamUser*)SteamClient_Client->GetISteamUser(hUser, hPipe, STEAMUSER_INTERFACE_VERSION);
+				ISteamUser* pSteamUser = (ISteamUser*)SteamClient_Client->GetISteamUser(hUser, hPipe, STEAMUSER_INTERFACE_VERSION);
 
-			if (pSteamUser != nullptr)
-			{
-				// Переопределяем Steam ID если настроено
-				if (miscConfig.steamId != 0)
-				{
-					SetMinidumpSteamID(miscConfig.steamId);
-					_cprintf_s("[Steam_API_Base] Steam ID override: %llu\r\n", miscConfig.steamId);
-				}
-				else
+				if (pSteamUser != nullptr)
 				{
 					SetMinidumpSteamID(pSteamUser->GetSteamID().ConvertToUint64());
 				}
+				else
+				{
+					NotifyMissingInterface(hPipe, STEAMUSER_INTERFACE_VERSION);
+					SteamAPI_Shutdown();
+					return k_ESteamAPIInitResult_VersionMismatch;
+				}
+
+				InitClientPointers = GetInterfacePointers.Init();
+
+				if (InitClientPointers == false)
+				{
+					WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] SteamAPI_Init --> GetInterfacePointers.Init failed!\r\n");
+
+					SteamAPI_Shutdown();
+					return k_ESteamAPIInitResult_VersionMismatch;
+				}
+
+				//ISteamUser::BLoggedOn Patch (x86)
+				//HMODULE NTDll = GetModuleHandleA("ntdll.dll");
+				//oRtlImageNtHeader = (_RtlImageNtHeader)GetProcAddress(NTDll, "RtlImageNtHeader");
+				//PIMAGE_NT_HEADERS NTHeaders = oRtlImageNtHeader(hSteamclient_Client);
+				//DWORD IsLoggedOnPattern = FindPattern((DWORD)hSteamclient_Client, NTHeaders->OptionalHeader.SizeOfImage, (BYTE*)"\x8B\x49\x04\x8B\x01\x8B\x40\x18\xFF\xE0", "xxxxxxxxxx");
+				//BYTE IsLoggedOnPatch[3] = { 0xB0, 0x01, 0xC3 };
+				//WriteToMemory(IsLoggedOnPattern, IsLoggedOnPatch, 3);
+
+				return k_ESteamAPIInitResult_OK;
 			}
 			else
 			{
-				NotifyMissingInterface(hPipe, STEAMUSER_INTERFACE_VERSION);
-				SteamAPI_Shutdown();
-				return k_ESteamAPIInitResult_VersionMismatch;
+				WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] SteamAPI_Init --> Failed to get AppID!\r\n");
 			}
-
-			InitClientPointers = GetInterfacePointers.Init();
-
-			if (InitClientPointers == false)
-			{
-				WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] SteamAPI_Init --> GetInterfacePointers.Init failed!\r\n");
-				SteamAPI_Shutdown();
-				return k_ESteamAPIInitResult_VersionMismatch;
-			}
-
-			_cprintf_s("[Steam_API_Base] SteamAPI_Init completed successfully!\r\n");
-			return k_ESteamAPIInitResult_OK;
 		}
 		else
 		{
 			WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] SteamAPI_Init --> Failed to get pointer to ISteamUtils!\r\n");
+
 			NotifyMissingInterface(hPipe, STEAMUTILS_INTERFACE_VERSION);
 			SteamAPI_Shutdown();
 			return k_ESteamAPIInitResult_VersionMismatch;
@@ -343,6 +316,7 @@ S_API ESteamAPIInitResult S_CALLTYPE SteamInternal_SteamAPI_Init(const char* psz
 	else
 	{
 		WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] SteamAPI_Init --> Failed to connect or create user!\r\n");
+
 		SteamAPI_Shutdown();
 		return k_ESteamAPIInitResult_NoSteamClient;
 	}
@@ -353,67 +327,8 @@ S_API ESteamAPIInitResult S_CALLTYPE SteamInternal_SteamAPI_Init(const char* psz
 
 S_API bool S_CALLTYPE SteamAPI_Init()
 {
-	// Объявляем buffer в начале функции
-	char buffer[256];
-
-	// Сначала проверяем steam_appid.txt
-	int appIdFromFile = 0;
-	std::ifstream appIdFile("steam_appid.txt");
-	if (appIdFile.is_open())
-	{
-		appIdFile >> appIdFromFile;
-		appIdFile.close();
-
-		sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Found steam_appid.txt with AppID: %d\r\n", appIdFromFile);
-		WriteColoredText(FOREGROUND_GREEN | FOREGROUND_INTENSITY, 7, buffer);
-	}
-	else
-	{
-		sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] steam_appid.txt not found, will use config AppID\r\n");
-		WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, buffer);
-	}
-
-	// Загружаем настройки из конфига
-	CConfigManager* config = GConfigManager();
-	int configAppId = config->GetInt("steam", "appid", 480);
-
-	// Если нашли steam_appid.txt, используем его AppID
-	if (appIdFromFile > 0)
-	{
-		// Обновляем AppID в конфиге (только в памяти, не сохраняя в файл)
-		config->SetInt("steam", "appid", appIdFromFile);
-
-		sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Overriding config AppID: %d -> %d\r\n", configAppId, appIdFromFile);
-		WriteColoredText(FOREGROUND_YELLOW | FOREGROUND_INTENSITY, 7, buffer);
-	}
-
 	bAnonymousUser = false;
-	bool result = SteamInternal_SteamAPI_Init(nullptr, nullptr) == k_ESteamAPIInitResult_OK;
-
-	if (result)
-	{
-		WriteColoredText(FOREGROUND_GREEN | FOREGROUND_INTENSITY, 7,
-			"[Steam_API_Base] SteamAPI_Init successful\r\n");
-
-		// Показываем финальный AppID
-		int finalAppId = config->GetInt("steam", "appid", 480);
-		sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Final AppID: %d\r\n", finalAppId);
-		WriteColoredText(FOREGROUND_CYAN | FOREGROUND_INTENSITY, 7, buffer);
-	}
-	else
-	{
-		WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7,
-			"[Steam_API_Base] SteamAPI_Init failed!\r\n");
-
-		DWORD error = GetLastError();
-		if (error != 0)
-		{
-			sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] GetLastError: %lu\r\n", error);
-			WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, buffer);
-		}
-	}
-
-	return result;
+	return SteamInternal_SteamAPI_Init(nullptr, nullptr) == k_ESteamAPIInitResult_OK;
 }
 
 S_API ESteamAPIInitResult S_CALLTYPE SteamAPI_InitFlat(SteamErrMsg* pOutErrMsg)
@@ -567,45 +482,75 @@ S_API bool S_CALLTYPE SteamAPI_RestartAppIfNecessary(uint32 unOwnAppID)
 	return true;
 }
 
-S_API void* S_CALLTYPE SteamInternal_ContextInit(void* pContextInitData)
+S_API void* S_CALLTYPE SteamInternal_ContextInit(void *pContextInitData)
 {
 	_cprintf_s("[Steam_API_Base] SteamInternal_ContextInit\r\n");
 
 	if (pContextInitData != nullptr)
 	{
-#if defined(_M_IX86)
+        #if defined(_M_IX86)
 		ContextInit* InitData = (ContextInit*)pContextInitData;
+
 		char* pPointer = static_cast<char*>(pContextInitData);
+
 		if (InitData->Counter == ContextCounter)
-		{
 			return pPointer + 8;
-		}
+
+		AcquireSRWLockExclusive(&ContextLock);
 
 		if (InitData->Counter != ContextCounter)
 		{
 			InitData->pFn(pPointer + 8);
 			InitData->Counter = ContextCounter;
 		}
+
+		ReleaseSRWLockExclusive(&ContextLock);
+
 		return pPointer + 8;
-#endif
-#if defined(_M_AMD64)
-		// Аналогично для x64
+        #endif
+
+        #if defined(_M_AMD64)
 		ContextInit* InitData = (ContextInit*)pContextInitData;
+
 		char* pPointer = static_cast<char*>(pContextInitData);
+
 		if (InitData->Counter == ContextCounter)
-		{
 			return pPointer + 16;
-		}
+
+		AcquireSRWLockExclusive(&ContextLock);
 
 		if (InitData->Counter != ContextCounter)
 		{
 			InitData->pFn(pPointer + 16);
 			InitData->Counter = ContextCounter;
 		}
+
+		ReleaseSRWLockExclusive(&ContextLock);
+
 		return pPointer + 16;
-#endif
+        #endif
 	}
 
 	WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, "[Steam_API_Base] SteamInternal_ContextInit Failed!\r\n");
 	return nullptr;
+
+	//SDK 1.42
+/*#if defined(_M_IX86)
+	__asm
+	{
+	    mov esi, [pContextInitData]
+	    mov eax, [esi + 4]
+	    cmp eax, ContextCounter
+	    lea eax, [esi + 8]
+	    jz Skip
+	    push eax
+	    mov eax, [esi]
+	    call eax
+	    mov eax, ContextCounter
+	    add esp, 4
+	    mov[esi + 4], eax
+	    lea eax, [esi + 8]
+	    Skip:
+	}
+#endif*/
 }

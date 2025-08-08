@@ -24,57 +24,10 @@
 #include "Functions\CreateInterface.h"
 #include "Functions\Flat.h"
 
-#include "ConfigManager.h"
-#include "SteamSettings.h"
-
-#include <synchapi.h>
-
-void EnsureNoSteamAppIdFile()
-{
-	const char* appIdFileName = "steam_appid.txt";
-
-	// Проверяем существование файла
-	DWORD fileAttributes = GetFileAttributesA(appIdFileName);
-
-	if (fileAttributes != INVALID_FILE_ATTRIBUTES)
-	{
-		// Файл существует, удаляем его
-		if (DeleteFileA(appIdFileName))
-		{
-			WriteColoredText(FOREGROUND_YELLOW | FOREGROUND_INTENSITY, 7,
-				"[Steam_API_Base] Removed existing steam_appid.txt file\r\n");
-		}
-		else
-		{
-			DWORD error = GetLastError();
-			char buffer[1024]; // Добавить в начало функции
-			sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Failed to remove steam_appid.txt (Error: %lu)\r\n", error);
-			WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7, buffer);
-		}
-	}
-}
-
-void LogWinAPIError(const char* functionName, DWORD errorCode)
-{
-	char errorMessage[256];
-	FormatMessageA(
-		FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-		nullptr,
-		errorCode,
-		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-		errorMessage,
-		sizeof(errorMessage),
-		nullptr);
-
-	_cprintf_s("[Steam_API_Base] %s failed with error %lu: %s\r\n",
-		functionName, errorCode, errorMessage);
-}
-
 void MyInvalidParameterHandler(const wchar_t* expression, const wchar_t* function, const wchar_t* file, unsigned int line, uintptr_t pReserved)
 {
-	WriteColoredText(FOREGROUND_RED | FOREGROUND_INTENSITY, 7,
-		"[Steam_API_Base] Invalid parameter handler triggered!\r\n");
-	// Логирование вместо немедленного выхода
+	MessageBoxW(nullptr, L"steam_api(64).dll Crashed (Invalid Parameter Handler)!", L"Invalid Parameter Handler", MB_ICONERROR);
+	ExitProcess(0);
 }
 
 int FailedMemoryAllocationHandler(size_t Size)
@@ -181,96 +134,62 @@ void* InternalAPI_Init(HMODULE *hSteamclient, bool bInitLocal, const char *Inter
 	return nullptr;
 }
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
+BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpvReserved)
 {
-	switch (ul_reason_for_call)
+	if (dwReason == DLL_PROCESS_ATTACH)
 	{
-	case DLL_PROCESS_ATTACH:
-	{
-		// Устанавливаем обработчики ошибок
-		_set_invalid_parameter_handler(MyInvalidParameterHandler);
+		_invalid_parameter_handler OldHandler, NewHandler;
+		NewHandler = MyInvalidParameterHandler;
+		OldHandler = _set_invalid_parameter_handler(NewHandler);
+
 		_set_new_handler(FailedMemoryAllocationHandler);
-		_set_new_mode(1);
 
 		AllocConsole();
-		FILE* fp_stdout = nullptr;
-		freopen_s(&fp_stdout, "CONOUT$", "w", stdout);
 
-		printf("[Steam_API_Base] DLL_PROCESS_ATTACH started\r\n");
+		char szFullDllPath[MAX_PATH] = { 0 };
 
-		// Удаляем steam_appid.txt если он существует
-		EnsureNoSteamAppIdFile();
+		const DWORD ModuleFileName = GetModuleFileNameA(hModule, szFullDllPath, sizeof(szFullDllPath));
 
-		printf("[Steam_API_Base] Loading configuration...\r\n");
-
-		// Инициализируем конфигурацию
-		if (!GConfigManager()->LoadConfig())
+		if (ModuleFileName == 0)
 		{
-			printf("[Steam_API_Base] Failed to load configuration!\r\n");
-		}
-		else
-		{
-			printf("[Steam_API_Base] Configuration loaded successfully\r\n");
-
-			// Выводим содержимое конфига для отладки
-			printf("[Steam_API_Base] Debug config:\r\n");
-			printf("  appid: %d\r\n", GConfigManager()->GetInt("steam", "appid", 0));
-			printf("  wrappermode: %s\r\n", GConfigManager()->GetBool("steam", "wrappermode", false) ? "true" : "false");
-			printf("  newappid: %d\r\n", GConfigManager()->GetInt("steam_wrapper", "newappid", 0));
+			MessageBoxW(nullptr, L"Unable to get dll name (1)!", L"Steam API Base", MB_ICONERROR);
+			ExitProcess(0);
 		}
 
-		printf("[Steam_API_Base] Loading Steam settings...\r\n");
-
-		// Загружаем настройки
-		if (!GSteamSettings()->LoadSettings())
+		if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
 		{
-			printf("[Steam_API_Base] Failed to load Steam settings!\r\n");
-		}
-		else
-		{
-			printf("[Steam_API_Base] Steam settings loaded successfully\r\n");
-
-			// Выводим настройки для отладки
-			printf("[Steam_API_Base] Debug Steam settings:\r\n");
-			printf("  Original AppID: %u\r\n", GSteamSettings()->GetOriginalAppId());
-			printf("  Wrapper AppID: %u\r\n", GSteamSettings()->GetWrapperAppId());
-			printf("  Wrapper Mode: %s\r\n", GSteamSettings()->IsWrapperMode() ? "true" : "false");
-			printf("  Active AppID (after substitution): %u\r\n", GSteamSettings()->GetActiveAppId());
+			MessageBoxW(nullptr, L"Unable to get dll name (2)!", L"Steam API Base", MB_ICONERROR);
+			ExitProcess(0);
 		}
 
-		// Проверяем, что AppID установлен корректно
-		uint32 activeAppID = GSteamSettings()->GetActiveAppId();
-		printf("[Steam_API_Base] Final Active AppID: %u\r\n", activeAppID);
+		_cprintf_s("[Steam_API_Base] Dll Path --> %s\r\n", szFullDllPath);
 
-		{
-			char buffer[1024];
-			sprintf_s(buffer, sizeof(buffer), "[Steam_API_Base] Final Active AppID: %u\r\n", activeAppID);
-			WriteColoredText(FOREGROUND_GREEN | FOREGROUND_INTENSITY, 7, buffer);
-		}
+        #if defined(_M_IX86)
+		    if (StrStrIA(szFullDllPath, "steam_api.dll") == nullptr)
+		    {
+				MessageBoxW(nullptr, L"Dll name must be steam_api.dll!", L"Steam API Base", MB_ICONERROR);
+				ExitProcess(0);
+		    }
+        #endif
+        #if defined(_M_AMD64)
+			if (StrStrIA(szFullDllPath, "steam_api64.dll") == nullptr)
+			{
+				MessageBoxW(nullptr, L"Dll name must be steam_api64.dll!", L"Steam API Base", MB_ICONERROR);
+				ExitProcess(0);
+			}
+        #endif
 
-		// Инициализация остальных компонентов
-		InitializeSRWLock(&ContextLock);
-		InitializeSRWLock(&CallbackLock);
+		_cprintf_s("[Steam_API_Base] PID --> %lu\r\n", GetCurrentProcessId());
+		_cprintf_s("[Steam_API_Base] ThreadID --> %lu\r\n", GetCurrentThreadId());
 
 		GetInterfacePointers.Clear();
 		GetGameServerInterfacePointers.Clear();
 
-		printf("[Steam_API_Base] DLL_PROCESS_ATTACH completed\r\n");
+		InitializeSRWLock(&ContextLock);
+		InitializeSRWLock(&CallbackLock);
 
-		break;
+		Win32MiniDump = new CWin32MiniDump();
 	}
-	case DLL_THREAD_ATTACH:
-		break;
-	case DLL_THREAD_DETACH:
-		break;
-	case DLL_PROCESS_DETACH:
-		// Очистка при выгрузке DLL
-		if (lpReserved == NULL)
-		{
-			// Вызвано FreeLibrary, выполняем очистку
-			SteamAPI_Shutdown();
-		}
-		break;
-	}
-	return TRUE;
+
+	return 1;
 }
